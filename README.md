@@ -10,7 +10,7 @@ Currently live with 250 internal users. Rollout to Broadway's 50k customer base 
 |:-------|:-------|
 | **Channel** | WhatsApp via Twilio webhooks and status callbacks |
 | **Runtime** | Node.js 22, Express 5, Docker Compose locally, Cloud Run Gen 2 in production |
-| **Agent** | Custom LangGraph state machine with 13 nodes, conditional edges, and abort-safe execution |
+| **Agent** | Custom state machine with 13 nodes, conditional edges, and abort-safe execution |
 | **Storage** | PostgreSQL 17 with pgvector for conversations and wardrobe. Redis 8 for queues and rate limiting |
 | **LLMs** | OpenAI (vision, embeddings, structured output) and Groq (fast conversational chat) |
 | **Infrastructure** | Cloud Run, Cloud SQL, Cloud Memorystore, Cloud Tasks, Cloud Functions, VPC networking |
@@ -24,7 +24,7 @@ graph LR
     C --> D[Auth + Rate Limit]
     D --> E[Redis Queue]
     E -->|per-user lock| F[Agent Runner]
-    F --> G[LangGraph State Machine]
+    F --> G[State Machine]
     G --> H[Reply via Twilio]
     H -->|status callback| C
     G -.->|async| I[Cloud Tasks]
@@ -33,7 +33,7 @@ graph LR
 
 1. **Inbound Webhook.** Validates Twilio signatures, applies rate limiting and whitelist checks, deduplicates message SIDs, and enqueues work per user.
 2. **Concurrency Control.** Redis-backed locks ensure only one message per user is processed at a time. New messages abort the currently running agent via `user_abort:<WaId>` pub/sub.
-3. **Agent Execution.** Loads user and conversation context, seeds a `GraphRun` record, then executes the LangGraph state machine.
+3. **Agent Execution.** Loads user and conversation context, seeds a `GraphRun` record, then executes the state machine.
 4. **Node Processing.** Specialized nodes handle intent routing, profile inference, outfit analysis, and response crafting. Nodes may call LLMs, analyze images, or query the database.
 5. **Reply Delivery.** The `sendReply` node sends text, menu, or image messages via Twilio. Delivery confirmation subscribes to status callbacks via Redis channels.
 6. **Tracing and Persistence.** Message transcripts, node runs, and LLM interactions are persisted in Postgres (`GraphRun`, `NodeRun`, `LLMTrace`) for replay and debugging.
@@ -114,7 +114,7 @@ graph TB
 | Component | Responsibility |
 |:----------|:---------------|
 | `src/index.ts` | Express app bootstrap, Twilio webhook routing, per-user message queue with Redis concurrency control |
-| `src/agent/` | LangGraph state machine definition, 12 node implementations, agent tools, execution tracing |
+| `src/agent/` | State machine definition, 12 node implementations, agent tools, execution tracing |
 | `src/lib/graph.ts` | Custom lightweight StateGraph implementation (~200 lines) with abort signal support |
 | `src/lib/ai/` | Provider-agnostic LLM abstraction layer: base chat models, structured output runnables, tool execution, cost tracking |
 | `src/lib/twilio.ts` | Twilio REST helpers with delivery status tracking via Redis pub/sub |
@@ -241,7 +241,7 @@ See `.env.example` for all configuration options.
 ```
 broadway-copilot/
 ├── src/                                # Express API + agent core
-│   ├── agent/                          # LangGraph state machine
+│   ├── agent/                          # State machine
 │   │   ├── graph.ts                    # Graph definition: 13 nodes, conditional edges
 │   │   ├── state.ts                    # GraphState type with discriminated unions
 │   │   ├── tools.ts                    # Agent tools (wardrobe search, memory, color analysis)
